@@ -1,0 +1,24 @@
+In a wide and deep learning framework, the “wide” component is designed to memorize feature interactions, particularly combinations of categorical variables that frequently occur together and have strong predictive power. To support this, selected categorical features were combined into cross-product features.
+
+The following feature crosses were constructed:
+
+Market Segment × Customer Type
+This interaction captures how different types of customers (e.g., transient, contract, group) behave within different booking channels. For example, cancellation behavior may differ significantly between corporate clients booking through a specific segment versus individual travelers.
+Room Type × Meal Plan
+This combination helps capture booking preferences. Certain room and meal plan combinations may indicate higher commitment (e.g., premium packages) and therefore lower cancellation probability.
+Arrival Month × Market Segment
+This interaction captures seasonal effects across different booking channels. Certain segments may behave differently depending on the time of year (e.g., vacation travelers vs. business travelers).
+
+These cross features are particularly useful because they allow the model to learn exceptions and memorized patterns that may not generalize linearly. For example, while a customer type alone may not strongly predict cancellation, its interaction with a specific market segment may be highly predictive.
+
+Not all features were crossed. Continuous numerical variables (such as lead time or price-related features) were not included in cross-product features because:
+
+Crossing high-cardinality or continuous variables can lead to an explosion in feature space
+These relationships are better captured by the deep component, which generalizes patterns through nonlinear transformations
+
+By carefully selecting a small number of meaningful feature crosses, the model balances:
+
+Memorization (wide component) for frequent, known patterns
+Generalization (deep component) for unseen or complex relationships
+
+This combination is the core advantage of the wide and deep architecture.
