@@ -1,0 +1,15 @@
+To ensure robust evaluation and realistic performance estimation, a combination of train/test split and Stratified K-Fold cross-validation was used.
+
+First, the dataset was divided into training and testing sets using a standard hold-out approach. The test set was kept completely separate and only used for final model evaluation. This simulates how the model would perform on unseen data in a real-world deployment.
+
+For model selection and hyperparameter tuning, Stratified K-Fold cross-validation was applied to the training data. Stratification ensures that each fold maintains the same proportion of canceled and non-canceled bookings as the original dataset. This is particularly important for classification problems where class imbalance may exist.
+
+The benefits of this approach are:
+
+More reliable performance estimates: By training and validating across multiple folds, the model is evaluated on different subsets of the data, reducing variance in performance estimates.
+Better use of data: All observations are used for both training and validation across different folds.
+Preservation of class distribution: Stratification prevents skewed evaluation results that could arise from uneven class representation.
+
+This validation strategy closely mirrors real-world usage, where a model is trained on historical data and then applied to new, unseen cases. Cross-validation helps ensure that the selected model generalizes well rather than overfitting to a specific subset of the data.
+
+The final model performance is reported on the held-out test set, using the evaluation metrics described earlier (AUC-ROC and F1-score), providing an unbiased estimate of real-world performance.
