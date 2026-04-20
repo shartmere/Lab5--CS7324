@@ -1,0 +1,64 @@
+# Find optimal threshold by F1
+thresholds = np.linspace(0.1, 0.9, 81)
+f1_scores = [f1_score(y_holdout, (wd_preds >= t).astype(int), zero_division=0) for t in thresholds]
+best_thresh = thresholds[np.argmax(f1_scores)]
+best_f1 = max(f1_scores)
+
+print(f'Optimal threshold for F1: {best_thresh:.2f} (F1 = {best_f1:.4f})')
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# F1 vs threshold
+axes[0].plot(thresholds, f1_scores, color='steelblue', lw=2)
+axes[0].axvline(best_thresh, color='red', linestyle='--', label=f'Optimal threshold={best_thresh:.2f}')
+axes[0].set_xlabel('Decision Threshold')
+axes[0].set_ylabel('F1 Score')
+axes[0].set_title('F1 Score vs. Decision Threshold', fontweight='bold')
+axes[0].legend()
+axes[0].grid(alpha=0.3)
+
+# Confusion matrix at optimal threshold
+wd_opt = (wd_preds >= best_thresh).astype(int)
+cm = confusion_matrix(y_holdout, wd_opt)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[1],
+            xticklabels=['Not Canceled', 'Canceled'],
+            yticklabels=['Not Canceled', 'Canceled'])
+axes[1].set_xlabel('Predicted')
+axes[1].set_ylabel('Actual')
+axes[1].set_title(f'Confusion Matrix (threshold={best_thresh:.2f})', fontweight='bold')
+
+plt.tight_layout()
+plt.savefig('threshold_analysis.png', dpi=150, bbox_inches='tight')
+plt.show()
+
+# Feature importance proxy: permutation of numerical features
+baseline_auc = roc_auc_score(y_holdout, wd_preds)
+importance_scores = {}
+
+holdout_in_copy = {k: v.copy() for k, v in holdout_in.items()}
+X_num_holdout_copy = X_num_holdout.copy()
+
+for i, col in enumerate(num_cols):
+    X_permuted = X_num_holdout.copy()
+    np.random.seed(42)
+    X_permuted[:, i] = np.random.permutation(X_permuted[:, i])
+    permuted_in = {k: v for k, v in holdout_in.items()}
+    permuted_in['num_input'] = X_permuted
+    perm_preds = final_wd.predict(permuted_in, verbose=0).flatten()
+    perm_auc = roc_auc_score(y_holdout, perm_preds)
+    importance_scores[col] = baseline_auc - perm_auc
+
+# Sort
+sorted_importance = dict(sorted(importance_scores.items(), key=lambda x: x[1], reverse=True))
+
+fig, ax = plt.subplots(figsize=(10, 5))
+colors_imp = ['steelblue' if v >= 0 else 'salmon' for v in sorted_importance.values()]
+ax.barh(list(sorted_importance.keys()), list(sorted_importance.values()), color=colors_imp)
+ax.axvline(0, color='black', lw=1)
+ax.set_xlabel('AUC Drop when Permuted (Importance Proxy)')
+ax.set_title('Permutation Feature Importance — Numerical Features\n(Best Wide & Deep Model)', fontweight='bold')
+ax.grid(axis='x', alpha=0.3)
+plt.tight_layout()
+plt.savefig('feature_importance.png', dpi=150, bbox_inches='tight')
+plt.show()
+print('Feature importance visualization saved.')
