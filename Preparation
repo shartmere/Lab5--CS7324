@@ -1,0 +1,124 @@
+#Load dataset
+DATA_PATH = 'Hotel Reservations.csv'
+df = pd.read_csv(DATA_PATH)
+
+print('Shape:', df.shape)
+print('\nColumn dtypes:')
+print(df.dtypes)
+print('\nFirst 5 rows:')
+df.head()
+
+print('Missing values per column:')
+print(df.isnull().sum())
+
+print('\nTarget distribution:')
+print(df['booking_status'].value_counts())
+print('\nClass balance (%):')
+print(df['booking_status'].value_counts(normalize=True).mul(100).round(2))
+
+#Variable Prep
+df = df.copy()
+
+df.drop(columns=['Booking_ID'], inplace=True)
+
+
+df['total_nights'] = df['no_of_week_nights'] + df['no_of_weekend_nights']
+df['total_guests'] = df['no_of_adults'] + df['no_of_children']
+
+
+
+df.drop(columns=['arrival_year', 'arrival_date'], inplace=True)
+
+
+df['label'] = (df['booking_status'] == 'Canceled').astype(int)
+df.drop(columns=['booking_status'], inplace=True)
+
+# Identify categorical and numerical columns
+cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+num_cols = [c for c in df.select_dtypes(include=['int64','float64']).columns if c != 'label']
+
+print('Categorical features:', cat_cols)
+print('Numerical features:', num_cols)
+print('Total features:', len(cat_cols) + len(num_cols))
+print('\nFinal shape:', df.shape)
+
+# Label encode all categorical columns
+label_encoders = {}
+cat_vocab_sizes = {}
+
+for col in cat_cols:
+    le = LabelEncoder()
+    df[col] = le.fit_transform(df[col].astype(str))
+    label_encoders[col] = le
+    cat_vocab_sizes[col] = len(le.classes_)
+    print(f'{col}: {cat_vocab_sizes[col]} unique values -> {list(le.classes_)}')
+
+print('\nDataset summary:')
+df.describe()
+
+# Scale numerical features
+scaler = StandardScaler()
+
+X_num = df[num_cols].values.astype(np.float32)
+X_cat = {col: df[col].values.astype(np.int32) for col in cat_cols}
+y = df['label'].values.astype(np.int32)
+
+print('Numerical feature matrix shape:', X_num.shape)
+print('Categorical features:', list(X_cat.keys()))
+print('Label shape:', y.shape)
+print('Class distribution:', np.bincount(y))
+
+cross_pairs = [
+    ('market_segment_type', 'room_type_reserved'),
+    ('type_of_meal_plan', 'market_segment_type'),
+    ('room_type_reserved', 'type_of_meal_plan'),
+]
+
+cross_features = {}
+cross_vocab_sizes = {}
+
+for col_a, col_b in cross_pairs:
+    cross_name = f'{col_a}_x_{col_b}'
+    
+    vocab_a = cat_vocab_sizes[col_a]
+    vocab_b = cat_vocab_sizes[col_b]
+    cross_val = df[col_a].values * vocab_b + df[col_b].values
+    cross_features[cross_name] = cross_val.astype(np.int32)
+    cross_vocab_sizes[cross_name] = vocab_a * vocab_b
+    print(f'Cross feature: {cross_name}, vocab size: {cross_vocab_sizes[cross_name]}')
+
+# Create index arrays for stratified splitting
+all_indices = np.arange(len(y))
+
+# Final holdout: 15% of all data
+train_val_idx, holdout_idx = train_test_split(
+    all_indices, test_size=0.15, random_state=42, stratify=y
+)
+
+print(f'Train+Val set: {len(train_val_idx)} samples')
+print(f'Holdout set:   {len(holdout_idx)} samples')
+print(f'\nHoldout class distribution: {np.bincount(y[holdout_idx])}')
+
+# Stratified 10-fold CV on train_val set
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+print(f'\nStratified 10-Fold CV configured on {len(train_val_idx)} train+val samples')
+
+# Helper: build input arrays for a given set of indices
+def build_inputs(indices, scale_num=True, fitted_scaler=None):
+    """Return a dict of {feature_name: array} for model inputs."""
+    X_n = X_num[indices].copy()
+    
+    if fitted_scaler is not None:
+        X_n = fitted_scaler.transform(X_n)
+    
+    inputs = {'num_input': X_n.astype(np.float32)}
+    
+    for col in cat_cols:
+        inputs[col] = X_cat[col][indices]
+    
+    for cross_name, cross_arr in cross_features.items():
+        inputs[cross_name] = cross_arr[indices]
+    
+    return inputs
+
+print('Input builder function defined.')
