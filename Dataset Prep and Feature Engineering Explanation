@@ -1,0 +1,22 @@
+For this project, our goal was to predict whether a hotel booking will be canceled. The original dataset contains a mix of categorical and numerical features describing booking behavior, customer characteristics, and reservation details.
+
+First, irrelevant or non-informative variables were removed. For example, Booking_ID was dropped because it is a unique identifier and does not contribute predictive value.
+
+Next, several new features were engineered to better capture meaningful patterns in the data:
+
+Total Nights (total_nights): Computed as the sum of weekend nights and weekday nights. This provides a more holistic measure of stay duration.
+
+Total Guests (total_guests): Computed as the sum of adults and children. This captures party size more effectively than separate variables.
+
+These engineered features help reduce dimensionality while improving interpretability.
+
+Categorical variables were identified and prepared for embedding or encoding within the model, while numerical variables were standardized using scaling techniques to ensure consistent magnitude across features. Proper data typing (e.g., integers for counts, floats for continuous variables) was enforced to ensure compatibility with Keras models.
+
+The final dataset consists of:
+
+Cleaned numerical features (scaled)
+Encoded categorical features
+Engineered features (total_nights, total_guests)
+A binary target variable (label) indicating booking cancellation
+
+This preprocessing pipeline ensures that the data is structured appropriately for both the wide and deep components of the model.
