@@ -1,0 +1,24 @@
+To model the booking cancellation prediction task, a wide and deep neural network architecture was implemented using Keras. This approach combines the strengths of both memorization and generalization:
+
+The wide component uses cross-product features to memorize frequent feature interactions
+The deep component is a feedforward neural network that captures nonlinear relationships and generalizes to unseen patterns
+
+To evaluate the effectiveness of this architecture, three different wide and deep models were constructed, each varying in the depth of the deep branch:
+
+Model 1 (Shallow): A single hidden layer
+Model 2 (Moderate depth): Two hidden layers
+Model 3 (Deeper network): Three hidden layers
+
+All models share the same wide input but differ in their capacity to learn hierarchical feature representations in the deep component.
+
+Each model was trained using the same training data and evaluated on a validation set during training. The training and validation performance were tracked across epochs using the history object returned by the Keras fit() function.
+
+To visualize learning behavior and detect overfitting, training and validation loss curves were plotted for each model. These plots provide insight into:
+
+Whether the model is underfitting (both losses high)
+Whether the model is overfitting (training loss decreases while validation loss increases)
+How quickly each model converges
+
+By comparing these curves across models, it is possible to observe how increasing network depth affects learning dynamics and stability.
+
+This experimental setup allows for a systematic comparison of model complexity and its impact on performance, forming the basis for selecting the most effective architecture.
