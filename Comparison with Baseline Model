@@ -1,0 +1,34 @@
+To evaluate the effectiveness of the wide and deep architecture, the best-performing model (moderately deep wide and deep network) was compared against a baseline deep-only model, implemented as a standard multi-layer perceptron (MLP).
+
+The baseline model uses only the deep component, removing the wide branch entirely. This means it relies solely on learned nonlinear feature representations and does not explicitly memorize feature interactions through cross-product features.
+
+Evaluation Method
+
+Both models were evaluated using:
+
+Receiver Operating Characteristic (ROC) curves
+Area Under the Curve (AUC)
+
+The ROC curve provides a visual representation of the trade-off between the true positive rate (recall) and false positive rate across different classification thresholds. AUC summarizes this performance into a single scalar value, representing the model’s ability to distinguish between canceled and non-canceled bookings.
+
+Results
+
+The comparison showed that:
+
+The wide and deep model achieved a higher AUC compared to the deep-only (MLP) model
+The ROC curve for the wide and deep model consistently lay above that of the MLP, indicating better classification performance across thresholds
+The improvement suggests that incorporating the wide component allows the model to better capture important feature interactions that the deep network alone may not learn efficiently
+Interpretation
+
+The deep-only model is effective at generalizing complex patterns, but it may struggle to learn specific feature interactions—especially when those interactions are sparse or not easily captured through nonlinear transformations.
+
+In contrast, the wide and deep model benefits from:
+
+Memorization of important feature combinations (wide component)
+Generalization through learned representations (deep component)
+
+This combination leads to improved predictive performance, particularly in structured data problems such as this one.
+
+Conclusion
+
+The wide and deep architecture outperformed the baseline MLP model in terms of AUC and overall classification behavior. This demonstrates the value of combining memorization and generalization in a single model, making it a more effective approach for the booking cancellation prediction task.
