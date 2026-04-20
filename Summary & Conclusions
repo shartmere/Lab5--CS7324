@@ -1,0 +1,18 @@
+Dataset
+We used the Hotel Reservations Classification Dataset from Kaggle (~36K rows) to predict whether a hotel booking will be canceled. This is a high-stakes binary classification task with a ~67/33 class split.
+
+Preparation Summary (Section 1)
+Dropped Booking_ID (no predictive value) and low-signal temporal columns (arrival_year, arrival_date).
+Engineered total_nights and total_guests as higher-level aggregate features.
+Label-encoded categorical features for embedding layers; standardized numerical features.
+Defined 3 cross-product features based on business logic: market_segment × room_type, meal_plan × market_segment, and arrival_month × market_segment.
+Selected ROC-AUC as the primary metric due to class imbalance and the business need for threshold flexibility.
+Used Stratified 10-Fold CV + a 15% final holdout for evaluation.
+Modeling Summary (Section 2)
+Trained 3 wide & deep architectures and visualized training vs. validation AUC curves.
+Ran 10-fold CV across 4 models with varying deep layer counts; used paired t-tests to identify the best-performing model.
+Compared the best Wide & Deep model to a standard MLP using ROC curves, AUC, and paired t-test.
+The Wide & Deep model demonstrates the value of combining memorization (wide branch with cross-product features) and generalization (deep branch with embeddings).
+Exceptional Work (Section 3)
+Performed threshold optimization to find the F1-maximizing decision boundary.
+Computed permutation-based feature importance to identify the most predictive numerical features for the hotel cancellation task (e.g., lead_time, avg_price_per_room, no_of_special_requests are typically strongest).
