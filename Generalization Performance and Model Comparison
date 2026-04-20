@@ -1,0 +1,33 @@
+To evaluate how model complexity affects generalization performance, the depth of the deep component in the wide and deep architecture was systematically varied. Specifically, models with different numbers of hidden layers were compared to determine which configuration provides the best balance between underfitting and overfitting.
+
+The models evaluated include:
+
+A shallow model with one hidden layer
+A moderately deep model with two hidden layers
+A deeper model with three hidden layers
+
+Each model was evaluated using Stratified K-Fold cross-validation, ensuring that performance was measured across multiple splits of the data while preserving class distribution. For each fold, the model was trained and evaluated using the selected performance metrics (AUC-ROC and F1-score).
+
+The results across folds were aggregated to compute:
+
+Mean performance (average AUC and F1-score)
+Variance/standard deviation (to assess stability)
+
+This approach provides a more reliable estimate of how each model generalizes to unseen data compared to a single train/test split.
+
+Findings
+
+The comparison revealed that:
+
+The shallow model tended to underfit the data, as it lacked sufficient capacity to capture complex relationships. This was reflected in lower AUC and F1-scores across folds.
+The moderately deep model achieved the best overall performance, balancing model complexity with generalization ability. It consistently produced higher average AUC and F1-scores with relatively low variance.
+The deeper model showed signs of overfitting. While it sometimes achieved strong performance on training data, its validation performance was less consistent and exhibited higher variance across folds.
+Statistical Comparison
+
+To ensure that observed differences in performance were not due to random variation, statistical comparisons were conducted across cross-validation folds. The moderately deep model demonstrated consistently superior performance, with improvements in mean AUC and F1-score that were stable across multiple splits.
+
+These results suggest that increasing model depth beyond a certain point does not necessarily improve performance and may instead harm generalization due to overfitting.
+
+Conclusion
+
+Based on cross-validation results and statistical comparison, the moderately deep wide and deep model (two hidden layers) was selected as the best-performing architecture. It provides the most reliable and generalizable performance for the booking cancellation prediction task.
