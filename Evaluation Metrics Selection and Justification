@@ -1,0 +1,27 @@
+To evaluate model performance, Area Under the Receiver Operating Characteristic Curve (AUC-ROC) and F1-score were selected as the primary metrics.
+
+Accuracy was not used as the main evaluation metric because it can be misleading in classification problems where class distributions may be imbalanced. In the context of hotel booking cancellations, it is often the case that one class (e.g., non-cancellations) dominates. A model that simply predicts the majority class could achieve high accuracy while failing to capture meaningful patterns.
+
+Instead, AUC-ROC was chosen because it evaluates the model’s ability to distinguish between classes across all classification thresholds. This is particularly useful in this problem because:
+
+It measures how well the model ranks canceled vs. non-canceled bookings
+It is insensitive to class imbalance
+It reflects overall model discrimination performance rather than a single threshold decision
+
+In addition to AUC, the F1-score was used to balance precision and recall. This is important because:
+
+Precision measures how many predicted cancellations are actually correct
+Recall measures how many actual cancellations are successfully identified
+The F1-score provides a harmonic mean of these two, ensuring that neither false positives nor false negatives are ignored
+
+From a practical perspective, both types of errors are costly:
+
+False negatives (missed cancellations) can lead to poor inventory management and lost revenue opportunities
+False positives (incorrectly predicting cancellations) may result in overbooking or unnecessary interventions
+
+By using both AUC-ROC and F1-score, the evaluation captures:
+
+Overall ranking performance (AUC)
+Balanced classification performance at a decision threshold (F1)
+
+This combination provides a more comprehensive and realistic assessment of model performance in a real-world booking system.
