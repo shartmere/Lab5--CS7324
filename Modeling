@@ -1,0 +1,383 @@
+def get_embedding_dim(vocab_size):
+    return min(50, (vocab_size // 2) + 1)
+
+def build_wide_deep_model(deep_layers, dropout_rate=0.3, learning_rate=1e-3):
+   
+    # Inputs
+    num_input = keras.Input(shape=(len(num_cols),), name='num_input')
+    
+    cat_inputs = {}
+    for col in cat_cols:
+        cat_inputs[col] = keras.Input(shape=(1,), dtype='int32', name=col)
+    
+    cross_inputs = {}
+    for cross_name in cross_features:
+        cross_inputs[cross_name] = keras.Input(shape=(1,), dtype='int32', name=cross_name)
+    
+    #  Deep Branch
+    cat_embeddings = []
+    for col in cat_cols:
+        vocab = cat_vocab_sizes[col]
+        emb_dim = get_embedding_dim(vocab)
+        emb = layers.Embedding(input_dim=vocab, output_dim=emb_dim, name=f'emb_{col}')(cat_inputs[col])
+        emb = layers.Flatten()(emb)
+        cat_embeddings.append(emb)
+    
+    
+    deep_input = layers.Concatenate()([num_input] + cat_embeddings)
+    deep_out = deep_input
+    
+    for units in deep_layers:
+        deep_out = layers.Dense(units, activation='relu')(deep_out)
+        deep_out = layers.BatchNormalization()(deep_out)
+        deep_out = layers.Dropout(dropout_rate)(deep_out)
+    
+    #Wide Branch
+    
+    cross_embeddings = []
+    for cross_name in cross_features:
+        vocab = cross_vocab_sizes[cross_name]
+        emb = layers.Embedding(input_dim=vocab, output_dim=1, name=f'emb_{cross_name}')(cross_inputs[cross_name])
+        emb = layers.Flatten()(emb)
+        cross_embeddings.append(emb)
+    
+    
+    wide_out = layers.Concatenate()([num_input] + cross_embeddings)
+    
+    
+    combined = layers.Concatenate()([wide_out, deep_out])
+    output = layers.Dense(1, activation='sigmoid', name='output')(combined)
+    
+    # Build Model 
+    all_inputs = [num_input] + list(cat_inputs.values()) + list(cross_inputs.values())
+    model = Model(inputs=all_inputs, outputs=output)
+    
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss='binary_crossentropy',
+        metrics=['AUC']
+    )
+    
+    return model
+
+# Quick test
+test_model = build_wide_deep_model([128, 64])
+test_model.summary()
+
+# Three Wide & Deep Architectures: Training Curves
+# Use a single train/val split for visualizing training curves
+tr_idx, va_idx = train_test_split(
+    train_val_idx, test_size=0.2, random_state=42, stratify=y[train_val_idx]
+)
+
+
+scaler_vis = StandardScaler()
+X_num_tr = scaler_vis.fit_transform(X_num[tr_idx]).astype(np.float32)
+X_num_va = scaler_vis.transform(X_num[va_idx]).astype(np.float32)
+
+def make_dataset_dict(indices, scaled_num, use_indices=True):
+    d = {'num_input': scaled_num}
+    for col in cat_cols:
+        d[col] = X_cat[col][indices]
+    for cross_name, cross_arr in cross_features.items():
+        d[cross_name] = cross_arr[indices]
+    return d
+
+tr_inputs = make_dataset_dict(tr_idx, X_num_tr)
+va_inputs = make_dataset_dict(va_idx, X_num_va)
+y_tr, y_va = y[tr_idx], y[va_idx]
+
+print(f'Training size: {len(tr_idx)}, Validation size: {len(va_idx)}')
+
+architectures = {
+    'WD-Small  [64, 32]':           [64, 32],
+    'WD-Medium [128, 64, 32]':      [128, 64, 32],
+    'WD-Large  [256, 128, 64, 32]': [256, 128, 64, 32],
+}
+
+histories = {}
+for name, layer_config in architectures.items():
+    print(f'\nTraining {name}')
+    tf.random.set_seed(42)
+    model = build_wide_deep_model(layer_config)
+    early_stop = EarlyStopping(monitor='val_AUC', patience=10, restore_best_weights=True, mode='max')
+    hist = model.fit(
+        tr_inputs, y_tr,
+        validation_data=(va_inputs, y_va),
+        epochs=100,
+        batch_size=512,
+        callbacks=[early_stop],
+        verbose=0
+    )
+    histories[name] = hist.history
+    val_auc = max(hist.history['val_AUC'])
+    print(f'  Best Val AUC: {val_auc:.4f}  (stopped at epoch {len(hist.history["loss"])})')
+
+#Plots
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+colors = [('steelblue', 'dodgerblue'), ('darkorange', 'orange'), ('darkgreen', 'limegreen')]
+
+for ax, (name, hist), (c_train, c_val) in zip(axes, histories.items(), colors):
+    epochs = range(1, len(hist['AUC']) + 1)
+    ax.plot(epochs, hist['AUC'], color=c_train, linewidth=2, label='Train AUC')
+    ax.plot(epochs, hist['val_AUC'], color=c_val, linewidth=2, linestyle='--', label='Val AUC')
+    ax.set_title(name, fontsize=11, fontweight='bold')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('AUC')
+    ax.legend()
+    ax.set_ylim([0.5, 1.0])
+    ax.grid(alpha=0.3)
+
+plt.suptitle('Training vs. Validation AUC Across Epochs — Wide & Deep Architectures',
+             fontsize=13, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.savefig('training_curves.png', dpi=150, bbox_inches='tight')
+plt.show()
+
+#Generalization Performance: Varying Deep Layer Depth via Cross-Validation
+cv_models = {
+    'WD-1Layer [128]':             [128],
+    'WD-2Layer [128, 64]':         [128, 64],
+    'WD-3Layer [128, 64, 32]':     [128, 64, 32],
+    'WD-4Layer [256,128,64,32]':   [256, 128, 64, 32],
+}
+
+cv_results = {name: [] for name in cv_models}
+
+fold_indices = list(skf.split(train_val_idx, y[train_val_idx]))
+
+for fold_num, (fold_tr_local, fold_va_local) in enumerate(fold_indices):
+    fold_tr_idx = train_val_idx[fold_tr_local]
+    fold_va_idx = train_val_idx[fold_va_local]
+    
+    fold_scaler = StandardScaler()
+    X_tr_fold = fold_scaler.fit_transform(X_num[fold_tr_idx]).astype(np.float32)
+    X_va_fold = fold_scaler.transform(X_num[fold_va_idx]).astype(np.float32)
+    
+    tr_in = make_dataset_dict(fold_tr_idx, X_tr_fold)
+    va_in = make_dataset_dict(fold_va_idx, X_va_fold)
+    y_fold_tr = y[fold_tr_idx]
+    y_fold_va = y[fold_va_idx]
+    
+    for name, layer_config in cv_models.items():
+        tf.random.set_seed(42)
+        m = build_wide_deep_model(layer_config)
+        es = EarlyStopping(monitor='val_AUC', patience=8, restore_best_weights=True, mode='max')
+        m.fit(
+            tr_in, y_fold_tr,
+            validation_data=(va_in, y_fold_va),
+            epochs=50, batch_size=1024,
+            callbacks=[es], verbose=0
+        )
+        y_pred = m.predict(va_in, verbose=0).flatten()
+        auc = roc_auc_score(y_fold_va, y_pred)
+        cv_results[name].append(auc)
+    
+    print(f'Fold {fold_num+1}/10 complete')
+
+print('\nCross-validation complete')
+
+# Summary statistics
+print('10-Fold CV Results')
+print(f'{"Model":<35} {"Mean":>8} {"Std":>8} {"Min":>8} {"Max":>8}')
+print('-' * 70)
+for name, scores in cv_results.items():
+    print(f'{name:<35} {np.mean(scores):>8.4f} {np.std(scores):>8.4f} {np.min(scores):>8.4f} {np.max(scores):>8.4f}')
+
+# Visualize CV results as boxplot
+fig, ax = plt.subplots(figsize=(10, 5))
+model_names = list(cv_results.keys())
+score_arrays = [cv_results[n] for n in model_names]
+
+bp = ax.boxplot(score_arrays, patch_artist=True, notch=False,
+                medianprops=dict(color='black', linewidth=2))
+
+palette = ['#4C72B0', '#DD8452', '#55A868', '#C44E52']
+for patch, color in zip(bp['boxes'], palette):
+    patch.set_facecolor(color)
+    patch.set_alpha(0.7)
+
+ax.set_xticks(range(1, len(model_names)+1))
+ax.set_xticklabels(model_names, rotation=20, ha='right')
+ax.set_ylabel('ROC-AUC')
+ax.set_title('10-Fold CV ROC-AUC by Model (Wide & Deep)', fontweight='bold')
+ax.grid(axis='y', alpha=0.3)
+plt.tight_layout()
+plt.savefig('cv_boxplot.png', dpi=150, bbox_inches='tight')
+plt.show()
+
+# Statistical comparison: paired t-tests between best model and all others
+# Identify best model by mean AUC
+mean_aucs = {n: np.mean(s) for n, s in cv_results.items()}
+best_model_name = max(mean_aucs, key=mean_aucs.get)
+print(f'Best model by mean AUC: {best_model_name} (AUC={mean_aucs[best_model_name]:.4f})')
+print()
+
+best_scores = np.array(cv_results[best_model_name])
+
+print('Paired t-tests vs. best model:')
+print(f'{"Comparison":<55} {"t-stat":>8} {"p-value":>10} {"Significant (α=0.05)":>22}')
+print('-' * 100)
+for name, scores in cv_results.items():
+    if name == best_model_name:
+        continue
+    t_stat, p_val = stats.ttest_rel(best_scores, np.array(scores))
+    sig = 'YES' if p_val < 0.05 else 'NO'
+    print(f'{best_model_name} vs. {name:<25} {t_stat:>8.3f} {p_val:>10.4f} {sig:>22}')
+
+#Comparison: Best Wide & Deep Model vs. Standard MLP
+def build_mlp_model(deep_layers, dropout_rate=0.3, learning_rate=1e-3):
+    num_input = keras.Input(shape=(len(num_cols),), name='num_input')
+    
+    cat_inputs = {}
+    for col in cat_cols:
+        cat_inputs[col] = keras.Input(shape=(1,), dtype='int32', name=col)
+    
+    cat_embeddings = []
+    for col in cat_cols:
+        vocab = cat_vocab_sizes[col]
+        emb_dim = get_embedding_dim(vocab)
+        emb = layers.Embedding(input_dim=vocab, output_dim=emb_dim, name=f'emb_{col}')(cat_inputs[col])
+        emb = layers.Flatten()(emb)
+        cat_embeddings.append(emb)
+    
+    deep_out = layers.Concatenate()([num_input] + cat_embeddings)
+    
+    for units in deep_layers:
+        deep_out = layers.Dense(units, activation='relu')(deep_out)
+        deep_out = layers.BatchNormalization()(deep_out)
+        deep_out = layers.Dropout(dropout_rate)(deep_out)
+    
+    output = layers.Dense(1, activation='sigmoid', name='output')(deep_out)
+    
+    all_inputs = [num_input] + list(cat_inputs.values())
+    model = Model(inputs=all_inputs, outputs=output)
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss='binary_crossentropy',
+        metrics=['AUC']
+    )
+    return model
+
+def make_mlp_dataset_dict(indices, scaled_num):
+    d = {'num_input': scaled_num}
+    for col in cat_cols:
+        d[col] = X_cat[col][indices]
+    return d
+
+print('MLP model builder defined.')
+
+best_layers = cv_models[best_model_name]
+print(f'Best WD config: {best_layers}')
+
+mlp_cv_scores = []
+
+for fold_num, (fold_tr_local, fold_va_local) in enumerate(fold_indices):
+    fold_tr_idx = train_val_idx[fold_tr_local]
+    fold_va_idx = train_val_idx[fold_va_local]
+    
+    fold_scaler = StandardScaler()
+    X_tr_fold = fold_scaler.fit_transform(X_num[fold_tr_idx]).astype(np.float32)
+    X_va_fold = fold_scaler.transform(X_num[fold_va_idx]).astype(np.float32)
+    
+    tr_in = make_mlp_dataset_dict(fold_tr_idx, X_tr_fold)
+    va_in = make_mlp_dataset_dict(fold_va_idx, X_va_fold)
+    y_fold_tr = y[fold_tr_idx]
+    y_fold_va = y[fold_va_idx]
+    
+    tf.random.set_seed(42)
+    mlp = build_mlp_model(best_layers)
+    es = EarlyStopping(monitor='val_AUC', patience=8, restore_best_weights=True, mode='max')
+    mlp.fit(
+        tr_in, y_fold_tr,
+        validation_data=(va_in, y_fold_va),
+        epochs=80, batch_size=512,
+        callbacks=[es], verbose=0
+    )
+    y_pred = mlp.predict(va_in, verbose=0).flatten()
+    auc = roc_auc_score(y_fold_va, y_pred)
+    mlp_cv_scores.append(auc)
+    print(f'  Fold {fold_num+1}/10 — MLP AUC: {auc:.4f}')
+
+print(f'\nMLP mean CV AUC: {np.mean(mlp_cv_scores):.4f} ± {np.std(mlp_cv_scores):.4f}')
+print(f'WD  mean CV AUC: {np.mean(cv_results[best_model_name]):.4f} ± {np.std(cv_results[best_model_name]):.4f}')
+
+# Paired t-test: Best WD model vs. MLP
+t_stat, p_val = stats.ttest_rel(
+    np.array(cv_results[best_model_name]),
+    np.array(mlp_cv_scores)
+)
+
+print('Paired t-test: Best Wide & Deep vs. MLP')
+print(f'WD  mean AUC: {np.mean(cv_results[best_model_name]):.4f}')
+print(f'MLP mean AUC: {np.mean(mlp_cv_scores):.4f}')
+print(f't-statistic: {t_stat:.4f}')
+print(f'p-value:     {p_val:.4f}')
+if p_val < 0.05:
+    print('Statistically significant difference at alpha=0.05')
+else:
+    print('No statistically significant difference at alpha=0.05')
+
+final_scaler = StandardScaler()
+X_num_train_all = final_scaler.fit_transform(X_num[train_val_idx]).astype(np.float32)
+X_num_holdout = final_scaler.transform(X_num[holdout_idx]).astype(np.float32)
+
+train_all_in = make_dataset_dict(train_val_idx, X_num_train_all)
+train_mlp_in = make_mlp_dataset_dict(train_val_idx, X_num_train_all)
+holdout_in = make_dataset_dict(holdout_idx, X_num_holdout)
+holdout_mlp_in = make_mlp_dataset_dict(holdout_idx, X_num_holdout)
+y_holdout = y[holdout_idx]
+
+# Final WD model
+tf.random.set_seed(42)
+final_wd = build_wide_deep_model(best_layers)
+final_wd.fit(
+    train_all_in, y[train_val_idx],
+    validation_split=0.1,
+    epochs=100, batch_size=512,
+    callbacks=[EarlyStopping(monitor='val_AUC', patience=10, restore_best_weights=True, mode='max')],
+    verbose=0
+)
+
+# Final MLP model
+tf.random.set_seed(42)
+final_mlp = build_mlp_model(best_layers)
+final_mlp.fit(
+    train_mlp_in, y[train_val_idx],
+    validation_split=0.1,
+    epochs=100, batch_size=512,
+    callbacks=[EarlyStopping(monitor='val_AUC', patience=10, restore_best_weights=True, mode='max')],
+    verbose=0
+)
+
+wd_preds  = final_wd.predict(holdout_in, verbose=0).flatten()
+mlp_preds = final_mlp.predict(holdout_mlp_in, verbose=0).flatten()
+
+wd_auc  = roc_auc_score(y_holdout, wd_preds)
+mlp_auc = roc_auc_score(y_holdout, mlp_preds)
+
+print(f'Holdout AUC — Wide & Deep: {wd_auc:.4f}')
+print(f'Holdout AUC — MLP:         {mlp_auc:.4f}')
+
+# ROC Curve comparison on holdout
+fpr_wd,  tpr_wd,  _ = roc_curve(y_holdout, wd_preds)
+fpr_mlp, tpr_mlp, _ = roc_curve(y_holdout, mlp_preds)
+
+fig, ax = plt.subplots(figsize=(7, 6))
+ax.plot(fpr_wd,  tpr_wd,  color='steelblue',  lw=2, label=f'Wide & Deep (AUC={wd_auc:.4f})')
+ax.plot(fpr_mlp, tpr_mlp, color='darkorange', lw=2, linestyle='--', label=f'MLP (AUC={mlp_auc:.4f})')
+ax.plot([0,1],[0,1], 'k--', lw=1, alpha=0.5, label='Random Classifier')
+ax.set_xlabel('False Positive Rate')
+ax.set_ylabel('True Positive Rate')
+ax.set_title('ROC Curve: Wide & Deep vs. MLP (Holdout Set)', fontweight='bold')
+ax.legend(loc='lower right')
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig('roc_comparison.png', dpi=150, bbox_inches='tight')
+plt.show()
+print('Figure saved: roc_comparison.png')
+
+# Classification report for best model at 0.5 threshold
+wd_binary = (wd_preds >= 0.5).astype(int)
+print('Classification Report — Best Wide & Deep Model (Holdout):')
+print(classification_report(y_holdout, wd_binary, target_names=['Not Canceled', 'Canceled']))
